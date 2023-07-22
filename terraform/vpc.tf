@@ -1,46 +1,50 @@
-resource "aws_vpc" "demo" {
+resource "aws_vpc" "terraform-eks-vpc" {
   cidr_block = "10.0.0.0/16"
 
-  tags = tomap({
-    "Name"                                      = "terraform-eks-demo",
-    "kubernetes.io/cluster/${var.cluster_name}" = "shared",
-  })
-}
-
-resource "aws_subnet" "demo" {
-  count = 2
-
-  availability_zone       = data.aws_availability_zones.available.names[count.index]
-  cidr_block              = "10.0.${count.index}.0/24"
-  map_public_ip_on_launch = true
-  vpc_id                  = aws_vpc.demo.id
-
-  tags = tomap({
-    "Name"                                      = "terraform-eks-demo",
-    "kubernetes.io/cluster/${var.cluster_name}" = "shared",
-  })
-}
-
-resource "aws_internet_gateway" "demo" {
-  vpc_id = aws_vpc.demo.id
-
   tags = {
-    Name = "terraform-eks-demo"
+    "Name"                                      = "terraform-eks-vpc"
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
   }
 }
 
-resource "aws_route_table" "demo" {
-  vpc_id = aws_vpc.demo.id
+resource "aws_subnet" "terraform-eks-public-subnet" {
+  count = 2
+
+  availability_zone       = "ap-northeast-2${count.index == 0 ? "a" : "c"}"
+  cidr_block              = "10.0.${count.index}.0/24"
+  map_public_ip_on_launch = true
+  vpc_id                  = aws_vpc.terraform-eks-vpc.id
+
+  tags = {
+    "Name"                                      = "terraform-eks-public-${count.index == 0 ? "a" : "c"}"
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+  }
+}
+
+resource "aws_internet_gateway" "terraform-eks-igw" {
+  vpc_id = aws_vpc.terraform-eks-vpc.id
+
+  tags = {
+    Name = "terraform-eks-igw"
+  }
+}
+
+resource "aws_route_table" "terraform-eks-public-rtb" {
+  vpc_id = aws_vpc.terraform-eks-vpc.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.demo.id
+    gateway_id = aws_internet_gateway.terraform-eks-igw.id
+  }
+
+  tags = {
+    "Name" = "terraform-eks-public-rtb"
   }
 }
 
-resource "aws_route_table_association" "demo" {
+resource "aws_route_table_association" "terraform-eks-rtb-association" {
   count = 2
 
-  subnet_id      = aws_subnet.demo[count.index].id
-  route_table_id = aws_route_table.demo.id
+  subnet_id      = aws_subnet.terraform-eks-public-subnet[count.index].id
+  route_table_id = aws_route_table.terraform-eks-public-rtb.id
 }
